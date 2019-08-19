@@ -1,0 +1,821 @@
+<apex:page showHeader="false" standardStylesheets="false" controller="MobileEthereumDashboardController" docType="html-5.0">
+<html ng-app="MyApp" style="background-color: #E6ECF0">
+<head>
+
+    <title>Token Transfer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <apex:includeScript value="{!URLFOR($Resource.lightening)}/angular.min.js" />
+    <apex:includeScript value="{!URLFOR($Resource.lightening)}/ContractDeployerApp.js" />
+    <script>
+        var resourcePath = "{!URLFOR($Resource.lightening)}";
+        resourcePath = resourcePath + '/';
+        myApp.value('resourcePath', resourcePath);
+    </script>
+    <apex:includeScript value="{!URLFOR($Resource.lightening)}/components.js" />
+    <apex:stylesheet value="{!URLFOR($Resource.lightening)}/slds.css"/>
+    
+    <script>
+
+    // var myApp = angular.module('MyApp',[]);
+        
+        
+        var parseJSON = function(str){
+            if(str==null || str == undefined || str == ''){
+                return {};
+            }
+            else return JSON.parse(str);
+        }
+
+        function MyController($scope){
+            $scope.contract;
+            $scope.isContractSelected = false;
+            $scope.showMethods = false;
+            $scope.contractAddress = '';
+            $scope.showTransferSpinner = false;
+
+
+            //for Alert
+            $scope.showAlert = false;
+            $scope.showAccount = false;
+            $scope.showSent = true;
+            $scope.showReceived = false;
+            $scope.showReceive = false;
+            $scope.showCamera = false;
+            $scope.selectedAccount={};
+            $scope.toastConfig = {};
+            $scope.toastConfigError = {type : 'E'};
+            
+            $scope.loadingAccount = true;
+            setTimeout(function(){$scope.loadingAccount = false;},3000);
+           
+            $scope.consoleSelected = function(){
+                //console.log('selectedAccount:', $scope.selectedAccount);
+            }
+            $scope.accountOptions = [];
+            $scope.accountLookupConfig = {
+                name : 'Account:',
+                placeholder:'Search accounts',
+                nameField : 'dapps__Address__c',
+                descField : 'Name'
+            }
+            
+            
+            //code for getting list of address
+            
+            $scope.selectedAdress;
+            $scope.loadingAddress = true;
+            $scope.addressOptions = [];
+            $scope.addressLookupConfig = {
+                name : 'To:',
+                placeholder:'Search Contacts',
+                nameField : 'dapps__Name__c',
+                descField : 'Name'
+            }
+            
+            $scope.loadingAddress = true;
+            setTimeout(function(){$scope.loadingAddress = false;},3000);
+            
+            $scope.onSelectAddress =function(selectedAddress){
+                $scope.selectedAddressObj = selectedAddress;
+                console.log('###selectedaddress', $scope.selectedAddress, $scope.selectedAddressObj);          
+                console.log($scope.selectedAddressObj.Name);
+            }
+            
+            
+            $scope.showAlertFn = function(sendType,methodName){
+                $scope.showAlert = true;
+                lastSendType = sendType;
+                lastMethodName = methodName;
+            }
+            
+            $scope.showAccountFn = function(sendType,methodName){
+                $scope.showAccount = true;
+                lastSendType = sendType;
+                lastMethodName = methodName;
+            }
+            
+            $scope.showSentFn = function(sendType,methodName){
+                $scope.showSent = true;
+                $scope.scopeReceived = false;
+                lastSendType = sendType;
+                lastMethodName = methodName;
+            }
+            
+            $scope.showReceivedFn = function(sendType,methodName){
+                $scope.showReceived = true;
+                $scope.showSent = false;
+                lastSendType = sendType;
+                lastMethodName = methodName;
+                
+            }
+            
+            
+            $scope.showReceiveFn = function(sendType,methodName){
+                $scope.showReceive = true;
+                $scope.showSent = false;
+                lastSendType = sendType;
+                lastMethodName = methodName;
+                
+            }
+
+            $scope.hideCamera = function(){
+                $scope.showCamera = false;
+            }
+                
+            $scope.hideAlert  = function(){
+                $scope.showAlert = false;
+            }
+            
+            $scope.hideAccount = function(){
+                $scope.showAccount = false;
+            }
+            
+            $scope.hideReceive  = function(){
+                $scope.showReceive = false;
+            }
+            $scope.signUsingOption = 'T';
+            $scope.onChangeSignOption = function(){
+                //console.log('signUsingTransactionPw:',$scope.signUsingOption);
+            }
+            //end for alert
+            
+            
+            
+            //code for getting list of tokens
+            $scope.selectedToken;
+            $scope.loadingToken = true;
+            $scope.tokenOptions = [];
+            $scope.tokenLookupConfig = {
+                name : 'Token',
+                placeholder:'Search Tokens',
+                nameField : 'Name',
+                descField : 'dapps__Contract_Address__c'
+            }
+            
+            $scope.onSelectToken =function(selectedOption){
+                $scope.selectedTokenObj = selectedOption;
+                console.log('###selectedtoken', $scope.selectedToken, $scope.selectedTokenObj);                
+            }
+            
+            $scope.getTokens = function (){                  
+                Visualforce.remoting.Manager.invokeAction(
+                    '{!$RemoteAction.MobileEthereumDashboardController.getTokens}',
+                    function(response, event){
+                        console.log('***result tokens***',response);
+                        if (event.status) {
+                            
+                            console.log("####in token success data");
+                            
+                            $scope.tokens = response;
+                            $scope.showSipnner = false; 
+                            $scope.tokenOptions = $scope.tokens;    
+                            $scope.loadingToken = false;            
+                            $scope.$apply();
+                          
+                            
+                        } else if (event.type === 'exception') {
+                            
+                        } else {
+                            
+                        }
+                    }, 
+                    {buffer: true, escape: true, timeout: 120000}
+                );            
+                
+            }
+
+            $scope.getTokens();
+            
+
+            $scope.getTokenTransfers = function (){                  
+                Visualforce.remoting.Manager.invokeAction(
+                    '{!$RemoteAction.MobileEthereumDashboardController.getTokenTransfers}',
+                    function(tokenTransfers, event){
+                        
+                        if (event.status) {
+                            for(var i=0;i<tokenTransfers.length;i++){
+                                tokenTransfers[i].icon = 'tokenTransfer';
+                            }
+                            $scope.tokenTransfers = tokenTransfers;
+                            $scope.loadingTokenTransfer = false;
+                            $scope.tokenOptions  = $scope.tokenTransfers;
+                            $scope.$apply();     
+                            
+                        } else if (event.type === 'exception') {
+                            
+                        } else {
+                            
+                        }
+                    }, 
+                    {buffer: true, escape: true, timeout: 120000}
+                );            
+                
+            }
+
+            $scope.getTokenTransfers();
+            
+                
+            
+            $scope.getAddresses = function (){                  
+                Visualforce.remoting.Manager.invokeAction(
+                    '{!$RemoteAction.MobileEthereumDashboardController.getAddresses}',
+                    function(addresses, event){
+                        //console.log('***result***',addresses);
+                        if (event.status) {
+                            for(var i=0;i<addresses.length;i++){
+                                addresses[i].icon = 'contact';
+                            }
+                            $scope.addresses = addresses;
+                            $scope.loadingAddress = false;
+                            $scope.addressOptions  = $scope.addresses;
+                            $scope.$apply();     
+                            
+                        } else if (event.type === 'exception') {
+                            
+                        } else {
+                            
+                        }
+                    }, 
+                    {buffer: true, escape: true, timeout: 120000}
+                );            
+                
+            }
+
+            $scope.getAddresses();
+
+
+            
+            $scope.getAccounts = function (){                  
+                Visualforce.remoting.Manager.invokeAction(
+                    '{!$RemoteAction.MobileEthereumDashboardController.getAccounts}',
+                    function(accounts, event){
+                        //console.log('***result***',accounts);
+                        if (event.status) {
+                            for(var i=0;i<accounts.length;i++){
+                                accounts[i].icon = 'account';
+                            }
+                            $scope.accounts = accounts;
+                            $scope.loadingAccount = false;
+                            $scope.accountOptions  = $scope.accounts;
+                            $scope.$apply();     
+                            
+                        } else if (event.type === 'exception') {
+                            
+                        } else {
+                            
+                        }
+                    }, 
+                    {buffer: true, escape: true, timeout: 120000}
+                );            
+                
+            }
+
+            $scope.getAccounts();
+            
+            $scope.createAccount = function(){
+                    var data = {};
+                    data['ethereumPassword'] = $scope.ethereumPassword;
+                    var dataStr = JSON.stringify(data);
+                    //console.log('***dataStr***',dataStr);
+                    
+                    //$scope.toastConfig.showToast('Account : ' + $scope.accountAddress + ' created successfully.');
+                    //return;
+                    Visualforce.remoting.Manager.invokeAction(
+                        '{!$RemoteAction.MobileEthereumDashboardController.createAccount}',
+                        dataStr, $scope.accountName,
+                        function(response, event){
+                            //console.log('***result***',response);
+                            if (event.status) {
+                                let _response = parseJSON(decodeJSON(response));
+                                let responseJson;
+                                if(_response.status == 'SUCCESS'){
+                                    responseJson = JSON.parse(_response.responseStr);
+                                    $scope.accountAddress = $scope.accountName;
+                                    $scope.accountCreated = true;
+                                    $scope.ethereumPassword = '';
+                                    $scope.confirmEthereumPassword= '';
+                                    $scope.toastConfig.showToast('Account:'+$scope.accountName+' created successfully.',5000);
+                                    $timeout(function(){
+                                        $scope.getAccounts();
+                                    },2000);
+                                }else{
+                                    responseJson = JSON.parse(_response.responseStr);
+                                    $scope.toastConfigError.showToast(responseJson.message,5000);
+                                }   
+                                $scope.$apply();
+                            } else if (event.type === 'exception') {
+                                
+                            } else {
+                                
+                            }
+                        }, 
+                        {buffer: true, escape: true, timeout: 120000}
+                    );   
+                }
+
+
+            //code for getting list of tokens
+            $scope.selectedToken;
+            $scope.loadingToken = true;
+            $scope.tokenOptions = [];
+            $scope.tokenLookupConfig = {
+                name : 'Token:',
+                placeholder:'Search Tokens',
+                nameField : 'Name',
+                descField : 'dapps__Contract_Address__c'
+            }
+            
+            $scope.onSelectToken =function(selectedOption){
+                $scope.selectedTokenObj = selectedOption;
+                //console.log('###selectedtoken', $scope.selectedToken, $scope.selectedTokenObj);                
+            }
+            
+            $scope.getTokens = function (){                  
+                Visualforce.remoting.Manager.invokeAction(
+                    '{!$RemoteAction.MobileEthereumDashboardController.getTokens}',
+                    function(response, event){
+                        //console.log('***result tokens***',response);
+                        if (event.status) {
+                            
+                            //console.log("####in token success data");
+                             for(var i=0;i<response.length;i++){
+                                response[i].icon = 'contract';
+                            }
+                            
+                            $scope.tokens = response;
+                            $scope.showSipnner = false; 
+                            $scope.tokenOptions = $scope.tokens;    
+                            $scope.loadingToken = false;            
+                            $scope.$apply();
+                          
+                            
+                        } else if (event.type === 'exception') {
+                            
+                        } else {
+                            
+                        }
+                    }, 
+                    {buffer: true, escape: true, timeout: 120000}
+                );            
+                
+            }
+
+            $scope.getTokens();
+
+
+
+            
+             var decodeJSON = function(jsonStr){
+                return jsonStr.replace(/(&quot\;)/g,"\"")
+            }
+            
+            
+            $scope.transferToken = function(){
+                var methodName = 'transfer';
+                var methodArgs = [];
+                var libraryName = '';
+                $scope.showTransferSpinner = true;
+
+                //preparing arguments as per existing methods               
+                var constructorParam = {};
+                var _args = {};
+
+                
+
+                
+                _args[0] = { 
+                                value : $scope.recipient,
+                                type: 'address'
+                            };
+                _args[1] = { 
+                                value : $scope.tokenvalue,
+                                type: 'uint256'
+                            };
+
+                constructorParam.args = _args;
+                constructorParam.count = 2;             
+
+                if($scope.selectedTokenObj){
+                    libraryName =  $scope.selectedTokenObj.Name;
+                }
+
+                //preparing token object
+                var tokenObj = {};
+                tokenObj.contractAddress = $scope.selectedTokenObj.dapps__Contract_Address__c;
+                tokenObj.from = $scope.selectedAccount[$scope.accountLookupConfig.nameField];
+                tokenObj.to = $scope.selectedAddressObj.Name;
+                tokenObj.tokenvalue = $scope.tokenvalue;
+                tokenObj.name = libraryName + ' - Token Transfer';
+
+                //console.log('######tokenObj ', tokenObj);
+                
+                let data = { 
+                            abi : parseJSON(decodeJSON($scope.selectedTokenObj.dapps__Smart_Contract__r.dapps__Library__r.dapps__ABI__c)),
+                            byteData : $scope.selectedTokenObj.dapps__Smart_Contract__r.dapps__Library__r.dapps__Byte_Code__c,
+                            from : $scope.selectedAccount[$scope.accountLookupConfig.nameField],
+                            methodArgs : constructorParam,
+                            methodName : methodName,
+                            address : $scope.selectedTokenObj.dapps__Contract_Address__c,
+                            privateKey : $scope.privateKey,
+                            libraryName : libraryName,
+                            token : tokenObj,
+                            ethereumPassword : $scope.ethereumPassword,
+                            transactionPassword : $scope.transactionPassword,
+                            signUsingOption : $scope.signUsingOption
+                        }
+                
+                var dataStr = JSON.stringify(data);
+                //console.log('***data***',data);
+                //console.log('***dataStr***',dataStr);
+                    
+                Visualforce.remoting.Manager.invokeAction(
+                    '{!$RemoteAction.MobileEthereumDashboardController.sendTransaction}',
+                    dataStr, 
+                    function(response, event){
+                        //console.log('***result***',response);
+                        if (event.status) {
+                            //console.log(response);
+                            $scope.showTransferSpinner = false;
+                            $scope.showMessage ="Transaction submitted. TxHash: "+ response;                   
+                            $timeout(function(){
+                                        $scope.getTokenTransfers();
+                                    },2000);
+                            $scope.$apply();
+                            
+                        } else if (event.type === 'exception') {
+                            
+                        } else {
+                            
+                        }
+                    }, 
+                    {buffer: true, escape: true, timeout: 120000}
+                );
+                
+                $scope.showAlert = false;
+
+            }
+            
+        }
+
+        myApp.controller('MyController', MyController);
+
+    </script>
+    
+        
+</head>
+<body style="background-color: #E6ECF0" ng-controller="MyController">
+    
+ <div class="slds-page-header" style="background-color: #FFF">
+  <div class="slds-media">
+    <div class="slds-media__body">
+      <h1 class="slds-page-header__title slds-truncate slds-align-middle" title="Smart Contract Deployer">Dappsuite Wallet</h1>
+       <span class="slds-badge slds-float_right">Ropsten Testnet</span>
+      <p class="slds-text-body_small slds-line-height_reset">
+        Send and Recieve Digital Payments
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="slds-grid slds-wrap">
+   
+
+<article class="slds-grid_vertical-align-center slds-card slds-col slds-size_1-of-1 slds-medium-size_6-of-12 slds-large-size_2-of-12" style="background-color: #FFF; margin-left: 8px; margin-top: 8px; margin-right: 8px; margin-bottom: 8px; padding-left:8px; padding-right:8px; padding-top:28px; padding-bottom:28px">
+    
+    <div class="slds-form--stacked" style="background-color: #FFF">
+        
+        
+      <div class="slds-form-element">
+        
+        <ngl-lookup options="tokenOptions" config="tokenLookupConfig" selectedmodel="selectedToken" loading="loadingToken" onselectcallback="onSelectToken"></ngl-lookup>
+
+      </div>
+        
+      <div class="slds-form-element">
+        
+        <ngl-lookup options="addressOptions" config="addressLookupConfig" selectedmodel="selectedAddress" loading="loadingAddress" onselectcallback="onSelectAddress"></ngl-lookup>
+
+      </div>
+        
+      <div class="slds-form-element">
+        <label class="slds-form-element__label" for="inputSample2">Amount:</label>
+        <div class="slds-form-element__control">
+          <input ng-model="tokenvalue" type="number" id="inputSample2" class="slds-input" placeholder="0" />
+            <br/>
+            
+        </div>
+      </div>
+        
+      <div class="slds-grid slds-gutters">
+        <div class="slds-col slds-size_1-of-2">
+      <div class="slds-form-element" style="padding-left: 58px">
+          <br/>
+        <div class="slds-form-element__control">
+          <!--<button  class="slds-button slds-button--brand" ng-click="transferToken()">Transfer</button>-->
+          <button  class="slds-button slds-button_brand" ng-click="showAlertFn('Transfer')"><svg class="slds-button__icon slds-button__icon_left" aria-hidden="true">
+                                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#threedots"></use>
+                                        </svg>Send</button>
+          <img src="https://i.stack.imgur.com/pK4a5.gif" style="width:30px;" ng-show="showTransferSpinner"/>
+          {{showMessage}}
+            
+          </div>
+            </div>
+          </div>
+          <div class="slds-col slds-size_1-of-2">
+                 <div class="slds-form-element" style="padding-left: 8px">
+          <br/>
+               
+          <!--<button  class="slds-button slds-button--brand" ng-click="transferToken()">Transfer</button>-->
+          <button  class="slds-button slds-button_brand" ng-click="showReceiveFn('Transfer')"><svg class="slds-button__icon slds-button__icon_left" aria-hidden="true">
+                                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#moneybag"></use>
+                                        </svg>Receive</button>
+
+          </div>
+          </div>
+    </div>
+    </div>
+</article>
+</div>
+    
+    
+<!-- New Account Modal -->
+<div class="demo-only" style="min-height:640px;margin-top: 0px !important;" ng-show="showAccount">
+      <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+            <div class="slds-modal__container">
+                <div class="slds-col slds-card slds-size_1-of-1 slds-medium-size_6-of-12 slds-large-size_2-of-12" style="margin-left: 8px; margin-top: 8px; margin-right: 8px; margin-bottom: 8px; padding-left:28px; padding-right:28px; padding-top:28px">                    
+            <div>
+        <header class="slds-modal__header">
+        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" ng-click="hideAccount()">
+          <svg class="slds-button__icon slds-button__icon_large" aria-hidden="true">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#close"></use>
+          </svg>
+          <span class="slds-assistive-text" >Close</span>
+        </button>
+        <div class="slds-media slds-no-space slds-media_center">
+          <div class="slds-media__figure">
+            <div class="slds-icon_container slds-icon-standard-lead">
+              <svg class="slds-icon" aria-hidden="true">
+                  <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/custom-sprite/svg/symbols.svg#custom76"></use>
+              </svg>
+              <span class="slds-assistive-text">New Accounts</span>
+            </div>
+          </div>
+          <div class="slds-media__body">
+            <h1 class="slds-page-header__title slds-align-middle">New Ethereum Account</h1>
+          </div>
+
+        </div>
+        </header>
+                <br/>
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1" style="min-height: 300px;">
+                <div>
+                   <div class="slds-form-element">
+                        <label class="slds-form-element__label" for="text-input-id-1">Users</label>
+                        <div class="slds-form-element__control slds-input-has-icon slds-input-has-icon_left">
+                            <svg class="slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default" aria-hidden="true">
+                                <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/action-sprite/svg/symbols.svg#new_person_account"></use>
+                            </svg>
+                            <input type="text" id="text-input-id-1" class="slds-input" />
+                        </div>
+                    </div>
+                   
+                    <br/>
+                    
+                    <div class="slds-form-element">
+                        <label class="slds-form-element__label" for="text-input-id-1">Account Name</label>
+                        <div class="slds-form-element__control slds-input-has-icon slds-input-has-icon_left">
+                            <svg class="slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default" aria-hidden="true">
+                                <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/action-sprite/svg/symbols.svg#new_person_account"></use>
+                            </svg>
+                            <input type="text" ng-model="accountName" id="text-input-id-1" class="slds-input" placeholder="AccountName" />
+                        </div>
+                    </div>
+                    
+                    <br/>
+                    
+                    <div class="slds-form-element">
+                        <label class="slds-form-element__label" for="text-input-id-1">Ethereum Password</label>
+                        <div class="slds-form-element__control slds-input-has-icon slds-input-has-icon_left">
+                            <svg class="slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default" aria-hidden="true">
+                                <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/action-sprite/svg/symbols.svg#password_unlock"></use>
+                            </svg>
+                            <input type="password" ng-model="ethereumPassword" id="text-input-id-1" class="slds-input" placeholder="Enter Ethereum Password" />
+                        </div>
+                    </div>
+                    
+                    <br/>
+                    
+                    <div class="slds-form-element" id="container-confirm-transaction-password">
+                        <label class="slds-form-element__label" for="text-input-id-1">Confirm Ethereum Password</label>
+                        <div class="slds-form-element__control slds-input-has-icon slds-input-has-icon_left">
+                            <svg class="slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default" aria-hidden="true">
+                                <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/action-sprite/svg/symbols.svg#password_unlock"></use>
+                            </svg>
+                            <input type="password" ng-model="confirmEthereumPassword" id="input-confirm-transaction-password" class="slds-input" placeholder="Confirm Ethereum Password" ng-keyup="onEnterConfitmPassword()" />
+                        </div>
+                        <div style="display: none;" class="slds-form-element__help" id="error-confirm-transaction-password">Password didn't match</div>
+                    </div>
+                   
+                    <br/><br/>
+                    
+                    <div>
+                        <table>
+                            <tr>
+                                <td style="text-align:left">
+                                    <button class="slds-button slds-button_brand slds-align_absolute-center" ng-click="createAccount()" ng-disabled="!ethereumPassword || ethereumPassword != confirmEthereumPassword">
+                                        <svg class="slds-button__icon slds-button__icon_left" aria-hidden="true">
+                                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#lock"></use>
+                                        </svg>Create Account
+                                    </button>                            
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        
+                    </div>
+                    <br/><br/>
+                </div>
+                </div>
+            </div>
+            
+                </div>
+          </div>
+    </section>
+      <div class="slds-backdrop slds-backdrop_open"></div>
+    </div>
+
+    
+ <!--Signer Modal -->
+<div class="demo-only" style="min-height:640px;margin-top: 0px !important;" ng-show="showAlert">
+  <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+    <div class="slds-modal__container">
+      <header class="slds-modal__header">
+        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" ng-click="hideAlert()">
+          <svg class="slds-button__icon slds-button__icon_large" aria-hidden="true">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#close"></use>
+          </svg>
+          <span class="slds-assistive-text" >Close</span>
+        </button>
+        <table>
+            <tr>
+                <td style="max-width: 17px;">
+                    <span class="slds-icon_container slds-icon-custom-custom5" title="Description of icon when needed">
+                      <svg class="slds-icon slds-icon_large" aria-hidden="true">
+                        <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/custom-sprite/svg/symbols.svg#custom76"></use>
+                      </svg>
+                      <span class="slds-assistive-text">Description of icon</span>
+                    </span>
+                </td>
+                <td>
+                    <h2 id="modal-heading-01" style="padding-left:17px" class="slds-text-heading_small slds-hyphenate">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Transaction Signer</h2>
+                    <p class="slds-text-body_small slds-line-height_reset" style="padding-left:17px">
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sign using your password or private key.
+      </p>
+                </td>
+            </tr>
+        </table>
+        
+        
+      </header>
+      <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1" style="min-height: 300px;">
+        <ngl-lookup options="accountOptions" config="accountLookupConfig" selectedmodel="selectedAccount" loading="loadingAccount" ></ngl-lookup><br/>
+        
+        <fieldset class="slds-form-element">
+              <legend class="slds-form-element__legend slds-form-element__label">Sign using:</legend>
+              <div class="slds-form-element__control">
+                <div class="slds-radio_button-group">
+                  <span class="slds-button slds-radio_button">
+                        <input type="radio" name="radio" id="tuesday" ng-model="signUsingOption" ng-click="onChangeSignOption()" value="E"/>
+                    <label class="slds-radio_button__label" for="tuesday">
+                      <span class="slds-radio_faux">Ethereum Password</span>
+                    </label>
+                  </span>
+                  <span class="slds-button slds-radio_button">
+                        <input type="radio" name="radio" id="wednesday" ng-model="signUsingOption" ng-click="onChangeSignOption()" value="P"/>
+                    <label class="slds-radio_button__label" for="wednesday">
+                      <span class="slds-radio_faux">Private Key</span>
+                    </label>
+                  </span>
+                </div>
+              </div>
+            </fieldset>
+            <br/>
+
+        <div class="slds-form-element" ng-show="signUsingOption=='E'">
+          <label class="slds-form-element__label" for="text-input-id-1">Ethereum Password</label>
+          <div class="slds-form-element__control slds-input-has-icon slds-input-has-icon_left">
+            <svg class="slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default" aria-hidden="true">
+              <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/action-sprite/svg/symbols.svg#password_unlock"></use>
+            </svg>
+                        <input type="password" ng-model="ethereumPassword" id="text-input-id-1" class="slds-input" placeholder="Enter Ethereum Password"/>
+          </div>
+        </div>
+
+
+
+        <div class="slds-form-element" ng-show="signUsingOption=='P'">
+          <label class="slds-form-element__label" for="text-input-id-1">Private Key</label>
+          <div class="slds-form-element__control slds-input-has-icon slds-input-has-icon_left">
+            <svg class="slds-icon slds-input__icon slds-input__icon_left slds-icon-text-default" aria-hidden="true">
+              <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/action-sprite/svg/symbols.svg#password_unlock"></use>
+            </svg>
+                        <input type="password" ng-model="privateKey" id="text-input-id-1" class="slds-input" placeholder="Enter Private Key"/>
+          </div>
+        </div>
+
+
+      </div>
+      <footer class="slds-modal__footer">
+        <button class="slds-button slds-button_neutral" ng-click="hideAlert()">Cancel</button>
+        <button class="slds-button slds-button_brand" ng-click="transferToken()">
+          <svg class="slds-button__icon slds-button__icon_left" aria-hidden="true">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#lock"></use>
+          </svg>Send Transaction</button>
+     </footer>
+    </div>
+  </section>
+  <div class="slds-backdrop slds-backdrop_open"></div>
+</div>   
+    
+    
+    
+ <!--Recieve Modal -->
+<div class="demo-only" style="min-height:640px;margin-top: 0px !important;" ng-show="showReceive">
+  <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+    <div class="slds-modal__container">
+      <header class="slds-modal__header">
+        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" ng-click="hideReceive()">
+          <svg class="slds-button__icon slds-button__icon_large" aria-hidden="true">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/utility-sprite/svg/symbols.svg#close"></use>
+          </svg>
+          <span class="slds-assistive-text" >Close</span>
+        </button>
+        <table>
+            <tr>
+                <td style="max-width: 17px;">
+                    <span class="slds-icon_container slds-icon-custom-custom5" title="Description of icon when needed">
+                      <svg class="slds-icon slds-icon_large" aria-hidden="true">
+                        <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{!URLFOR($Resource.dapps__lightening)}/assets/icons/custom-sprite/svg/symbols.svg#custom17"></use>
+                      </svg>
+                      <span class="slds-assistive-text"></span>
+                    </span>
+                </td>
+                <td>
+                    <h2 id="modal-heading-01" style="padding-left:17px" class="slds-text-heading_small slds-hyphenate">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Receive Payment</h2>
+                    <p class="slds-text-body_small slds-line-height_reset" style="padding-left:17px">
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      </p>
+                </td>
+            </tr>
+        </table>
+        
+        
+      </header>
+      <footer class="slds-modal__footer">
+        <button class="slds-button slds-button_neutral" ng-click="hideReceive()">Cancel</button>
+     </footer>
+    </div>
+  </section>
+  <div class="slds-backdrop slds-backdrop_open"></div>
+</div>   
+    
+    
+<article class="slds-grid_vertical-align-center slds-col slds-size_1-of-1 slds-medium-size_6-of-12 slds-large-size_2-of-12" style="background-color: #E6ECF0; margin-top: 8px; margin-right: 8px; margin-bottom: 8px; padding-left:8px; padding-right:8px; padding-bottom:28px">
+        <div>
+        <ul  class="slds-size_1-of-1 slds-has-dividers_around-space" ng-repeat="tokenTransfer in tokenTransfers">
+        <li class="slds-item"  style="margin-bottom: 8px; background-color: #FFF">
+        <article class="slds-tile slds-tile_board">
+        <h3 class="slds-tile__title slds-truncate" >Asset Name: {{tokenTransfer.dapps__Token_Name__c}}</h3>
+        <div class="slds-tile__detail">
+          <p class="slds-item slds-truncate">Age: {{tokenTransfer.dapps__Age__c}}</p>
+          <p class="slds-truncate slds-item">From: {{tokenTransfer.dapps__From_Address__c}}</p>
+          <p class="slds-truncate slds-item">To: {{tokenTransfer.dapps__To_Address__c}}</p>
+          <p class="slds-truncate slds-item">Contact Name: {{tokenTransfer.dapps__Contact_Name__c}}</p>
+          <p class="slds-truncate slds-text-heading_medium">Quantity: {{tokenTransfer.dapps__Value_Display__c}} {{tokenTransfer.dapps__Symbol__c}}    <span data-slds-trend="down" class="slds-icon-trend slds-is-animated" title="Description of the icon">
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path class="slds-icon-trend__arrow" d="M.75 8H11M8 4.5L11.5 8 8 11.5" />
+    <circle class="slds-icon-trend__circle" cy="8" cx="8" r="7.375" transform="rotate(-28 8 8) scale(-1 1) translate(-16 0)" />
+  </svg>
+  <span class="slds-assistive-text">Text alternative</span>
+</span></p>
+            <p class="slds-truncate slds-item"><a href="https://ropsten.etherscan.io/address/{{tokenTransfer.dapps__To_Address__c}}">View on Etherscan</a></p>
+        </div>
+       </article>
+            </li>
+            </ul>
+        </div>
+     </article>
+    
+    <div class="slds-spinner_container" ng-show="showSipnner">
+  <div role="status" class="slds-spinner slds-spinner--medium">
+    <span class="slds-assistive-text">Loading</span>
+    <div class="slds-spinner__dot-a"></div>
+    <div class="slds-spinner__dot-b"></div>
+  </div>
+</div>
+            
+    
+    </body>
+    </html>
+    
+</apex:page>
